@@ -3,7 +3,11 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const { createClient } = require('@supabase/supabase-js');
 const { v2: cloudinary } = require('cloudinary');
 const dotenv = require('dotenv');
+const retailers = require('./retailers.json');
+const express = require('express')
 
+const app = express()
+const port = 9000
 dotenv.config();
 
 cloudinary.config({
@@ -14,71 +18,8 @@ cloudinary.config({
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+app.use(express.json());
 
-const retailers = [
-  {
-    name: "Fairprice",
-    src: "https://www.fairprice.com.sg",
-    hits: [
-      { category: "rice", target: "https://www.fairprice.com.sg/category/rice" },
-      { category: "bread", target: "https://www.fairprice.com.sg/category/breads--1" },
-      { category: "eggs", target: "https://www.fairprice.com.sg/category/eggs" },
-      { category: "milk", target: "https://www.fairprice.com.sg/category/fresh-milk--1" },
-      { category: "soft drinks", target: "https://www.fairprice.com.sg/category/carbonated" },
-      { category: "chocolate malt", target: "https://www.fairprice.com.sg/category/chocolate-malted" },
-      { category: "asian drinks", target: "https://www.fairprice.com.sg/category/asian-drinks" },
-      { category: "frozen seafood", target: "https://www.fairprice.com.sg/category/frozen-seafood" },
-      { category: "pasta", target: "https://www.fairprice.com.sg/category/pasta--1" },
-      { category: "noodles", target: "https://www.fairprice.com.sg/category/noodles--1" },
-      { category: "oil", target: "https://www.fairprice.com.sg/category/oil" },
-      { category: "paper & tissue", target: "https://www.fairprice.com.sg/category/paper-tissue" },
-      { category: "instant cup noodles", target: "https://www.fairprice.com.sg/category/instant-cups" },
-      { category: "instant noodles", target: "https://www.fairprice.com.sg/category/instant-noodles" },
-      { category: "dumplings", target: "https://www.fairprice.com.sg/category/dumplings-gyoza" },
-      { category: "chicken delights", target: "https://www.fairprice.com.sg/category/chicken-delights" },
-      { category: "paper & tissue", target: "https://www.fairprice.com.sg/category/paper-tissue" },
-      { category: "dishwashing", target: "https://www.fairprice.com.sg/category/dishwashing" },
-    ],
-    selectors: {
-      productContainer: ".sc-2a85da88-0.fhLHEV.product-container",
-      productName: ".sc-aa673588-1.iCYFVg",
-      productPrice: ".sc-aa673588-1.sc-65bf849-1.kdTuLI.cXCGWM",
-      productSrc: ".sc-2a85da88-3.kvyuCT",
-      productImg: "img.sc-aca6d870-0.janHcI"
-    },
-  },
-  {
-    name: "Sheng Siong",
-    src: "https://shengsiong.com.sg",
-    hits: [
-      { category: "rice", target: "https://shengsiong.com.sg/rice-noodles-pasta/rice" },
-      { category: "bread", target: "https://shengsiong.com.sg/breakfast-spreads/bakery" },
-      { category: "eggs", target: "https://shengsiong.com.sg/dairy-chilled-eggs/eggs" },
-      { category: "milk", target: "https://shengsiong.com.sg/dairy-chilled-eggs/fresh-milk" },
-      { category: "soft drinks", target: "https://shengsiong.com.sg/beverages/soft-drinks" },
-      { category: "instant beverages", target: "https://shengsiong.com.sg/beverages/instant-beverages" },
-      { category: "asian drinks", target: "https://shengsiong.com.sg/beverages/asian-drinks" },
-      { category: "frozen seafood", target: "https://shengsiong.com.sg/meat-poultry-seafood/frozen-seafood-31" },
-      { category: "pasta", target: "https://shengsiong.com.sg/rice-noodles-pasta/pasta" },
-      { category: "noodles", target: "https://shengsiong.com.sg/rice-noodles-pasta/noodles" },
-      { category: "oil", target: "https://shengsiong.com.sg/cooking-baking-needs/cooking-oil" },
-      { category: "paper & tissue", target: "https://shengsiong.com.sg/household/paper-tissue" },
-      { category: "instant cup noodles", target: "https://shengsiong.com.sg/convenience-food-113/instant-noodles/cup-bowl-noodles" },
-      { category: "instant noodles", target: "https://shengsiong.com.sg/convenience-food-113/instant-noodles/packet-noodles" },
-      { category: "dumplings", target: "https://shengsiong.com.sg/frozen-goods/pastries-dumplings-buns" },
-      { category: "frozen meat", target: "https://shengsiong.com.sg/frozen-goods/frozen-meat-105" },
-      { category: "paper & tissue", target: "https://shengsiong.com.sg/household/paper-tissue" },
-      { category: "cleaning supplies", target: "https://shengsiong.com.sg/household/cleaning-supplies" }
-    ],
-    selectors: {
-      productContainer: ".col-lg-2",
-      productName: ".product-name",
-      productPrice: ".product-price",
-      productSrc: ".product-preview",
-      productImg: ".product-img"
-    },
-  }
-];
 
 async function updateItem(itemName, retailer, src, price, imgSrc, imgName) {
   let date = new Date();
@@ -149,16 +90,30 @@ async function scrollToBottom(page) {
   });
 }
 
-puppeteer.use(StealthPlugin())
-puppeteer.launch({ headless: true }).then(async (browser) => {
+app.get('/scrape', async (req, res) => {
+  // todo authorization check
+
+  let results = { dateStarted: new Date() };
+
+  puppeteer.use(StealthPlugin());
+
+  const browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
   let totalItems = 0;
 
+
   async function extractData(retailer) {
+    let scrapeResult = [];
+
     for (let h = 0; h < retailer.hits.length; h++) {
-      await page.goto(retailer.hits[h].target, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await scrollToBottom(page);
-      await page.waitForSelector(retailer.selectors.productContainer, { timeout: 60000 });
+      try {
+        await page.goto(retailer.hits[h].target, { waitUntil: "networkidle0", timeout: 60000 });
+        await scrollToBottom(page);
+        //await page.waitForSelector(retailer.selectors.productContainer, { timeout: 60000 });
+      } catch (e) {
+        scrapeResult.push({ category: retailer.hits[h].category, status: e });
+        return e;
+      }
 
       const products = await page.$$eval(retailer.selectors.productContainer, (elements, retailer) => {
         let productList = [];
@@ -189,15 +144,25 @@ puppeteer.launch({ headless: true }).then(async (browser) => {
       console.log("category: ", retailer.hits[h].category);
       console.log("total items: ", products.length);
       console.log('======================');
+
+      scrapeResult.push({ category: retailer.hits[h].category, count: products.length, status: "success" });
     }
+    return scrapeResult;
   }
 
   for (let r = 0; r < retailers.length; r++) {
-    await extractData(retailers[r]);
+    const scrapedResult = await extractData(retailers[r]);
+    results[retailers[r].name] = scrapedResult;
   }
 
   console.log("scrape completed");
   console.log("total items: ", totalItems);
+  results["total"] = totalItems;
   browser.close()
+
+  res.json(results);
 });
 
+app.listen(port, () => {
+  console.log(`scraper service running at port ${port}`);
+});
